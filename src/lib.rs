@@ -1,3 +1,5 @@
+use ansi_term::Colour::Fixed;
+
 /********************** Constants **********************/
 
 const DELTA_THETA: f32 = 0.01;
@@ -8,10 +10,11 @@ const R2: f32 = 2.0;
 const K1: f32 = (SCREEN_WIDTH as f32) * K2 * 3.0 / (8.0 * (R1 + R2));
 const K2: f32 = 5.0;
 
-const SCREEN_WIDTH: u32 = 36;
-const SCREEN_HEIGHT: u32 = 36;
+const SCREEN_WIDTH: usize = 36;
+const SCREEN_HEIGHT: usize = 36;
 
 const SYMBOLS: [char; 12] = ['.', ',', '-', '~', ':', ';', '=', '!', '*', '#', '$', '@'];
+const COLORS: [u8; 12] = [26, 27, 62, 63, 98, 99, 134, 135, 170, 171, 206, 207];
 
 const A0: f32 = 1.0;
 const DELTA_A: f32 = 0.04;
@@ -32,19 +35,32 @@ pub fn simulate() {
 }
 
 fn render_frame(a: f32, b: f32) {
-    let char_output = compute_frame(a, b);
+    let Frame {
+        char_output,
+        color_output,
+    } = compute_frame(a, b);
     print!("\x1b[H");
     for i in 0..SCREEN_HEIGHT {
         for j in 0..SCREEN_WIDTH {
-            print!("{}", char_output[i as usize][j as usize]);
+            let symbol = Fixed(color_output[i][j])
+                .on(Fixed(0))
+                .bold()
+                .paint(char_output[i][j].to_string());
+            print!("{}", symbol);
         }
         println!();
     }
 }
 
-fn compute_frame(a: f32, b: f32) -> [[char; SCREEN_WIDTH as usize]; SCREEN_HEIGHT as usize] {
-    let mut char_output = [[' '; SCREEN_WIDTH as usize]; SCREEN_HEIGHT as usize];
-    let mut z_buffer = [[0.0f32; SCREEN_WIDTH as usize]; SCREEN_HEIGHT as usize];
+struct Frame {
+    char_output: [[char; SCREEN_WIDTH]; SCREEN_HEIGHT],
+    color_output: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
+}
+
+fn compute_frame(a: f32, b: f32) -> Frame {
+    let mut char_output = [[' '; SCREEN_WIDTH]; SCREEN_HEIGHT];
+    let mut color_output = [[0u8; SCREEN_WIDTH]; SCREEN_HEIGHT];
+    let mut z_buffer = [[0.0f32; SCREEN_WIDTH]; SCREEN_HEIGHT];
 
     let sin_a = a.sin();
     let cos_a = a.cos();
@@ -82,14 +98,23 @@ fn compute_frame(a: f32, b: f32) -> [[char; SCREEN_WIDTH as usize]; SCREEN_HEIGH
             if luminance > 0.0 && ooz > z_buffer[xp][yp] {
                 z_buffer[xp][yp] = ooz;
                 char_output[xp][yp] = compute_char(luminance);
+                color_output[xp][yp] = compute_foreground_color(luminance);
             }
         }
     }
 
-    char_output
+    Frame {
+        char_output,
+        color_output,
+    }
 }
 
 fn compute_char(luminance: f32) -> char {
-    let luminance_index: usize = (luminance * 8.0) as usize;
+    let luminance_index = (luminance * 8.0) as usize;
     return SYMBOLS[luminance_index];
+}
+
+fn compute_foreground_color(luminance: f32) -> u8 {
+    let luminance_index = (luminance * 8.0) as usize;
+    return COLORS[luminance_index];
 }
