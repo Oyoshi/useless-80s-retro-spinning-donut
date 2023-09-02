@@ -14,7 +14,8 @@ const SCREEN_WIDTH: usize = 36;
 const SCREEN_HEIGHT: usize = 36;
 
 const SYMBOLS: [char; 12] = ['.', ',', '-', '~', ':', ';', '=', '!', '*', '#', '$', '@'];
-const COLORS: [u8; 12] = [26, 27, 62, 63, 98, 99, 134, 135, 170, 171, 206, 207];
+const NIGHT_COLORS: [u8; 12] = [26, 27, 62, 63, 98, 99, 134, 135, 170, 171, 206, 207];
+const DAY_COLORS: [u8; 12] = [198, 199, 204, 205, 210, 211, 216, 217, 222, 223, 228, 229];
 
 const A0: f32 = 1.0;
 const DELTA_A: f32 = 0.04;
@@ -34,29 +35,58 @@ struct FrameElement {
 }
 
 impl FrameElement {
-    fn new(luminance_index: usize) -> FrameElement {
+    fn new(color_variant: &ColorVariant, luminance_index: usize) -> FrameElement {
         let symbol = SYMBOLS[luminance_index];
-        let color = COLORS[luminance_index];
+        let color = match color_variant {
+            ColorVariant::DAY => DAY_COLORS[luminance_index],
+            ColorVariant::NIGHT => NIGHT_COLORS[luminance_index],
+        };
         return FrameElement { symbol, color };
     }
 }
 
-pub fn simulate() {
+pub enum ColorVariant {
+    DAY,
+    NIGHT,
+}
+
+pub struct Config {
+    pub variant: ColorVariant,
+}
+
+impl Config {
+    pub fn build(mut args: impl Iterator<Item = String>) -> Result<Config, &'static str> {
+        args.next(); // program name so skip it
+
+        let variant = match args.next() {
+            Some(arg) => match arg.as_str() {
+                "day" => ColorVariant::DAY,
+                "night" => ColorVariant::NIGHT,
+                _ => return Err("Invalid variant"),
+            },
+            None => return Err("Color variant is required"),
+        };
+
+        Ok(Config { variant })
+    }
+}
+
+pub fn simulate(config: &Config) {
     let mut a = A0;
     let mut b = B0;
     print!("\x1b[2J");
     loop {
-        render_frame(a, b);
+        render_frame(&config.variant, a, b);
         a += DELTA_A;
         b += DELTA_B;
     }
 }
 
-fn render_frame(a: f32, b: f32) {
+fn render_frame(color_variant: &ColorVariant, a: f32, b: f32) {
     let Frame {
         symbols_output,
         colors_output,
-    } = compute_frame(a, b);
+    } = compute_frame(&color_variant, a, b);
     print!("\x1b[H");
     for i in 0..SCREEN_HEIGHT {
         for j in 0..SCREEN_WIDTH {
@@ -70,7 +100,7 @@ fn render_frame(a: f32, b: f32) {
     }
 }
 
-fn compute_frame(a: f32, b: f32) -> Frame {
+fn compute_frame(color_variant: &ColorVariant, a: f32, b: f32) -> Frame {
     let mut symbols_output = [[' '; SCREEN_WIDTH]; SCREEN_HEIGHT];
     let mut colors_output = [[0u8; SCREEN_WIDTH]; SCREEN_HEIGHT];
     let mut z_buffer = [[0.0f32; SCREEN_WIDTH]; SCREEN_HEIGHT];
@@ -110,7 +140,8 @@ fn compute_frame(a: f32, b: f32) -> Frame {
                     + cos_b * (cos_a * sin_theta - cos_theta * sin_a * sin_phi);
             if luminance > 0.0 && ooz > z_buffer[xp][yp] {
                 z_buffer[xp][yp] = ooz;
-                let FrameElement { symbol, color } = compute_frame_element(luminance);
+                let FrameElement { symbol, color } =
+                    compute_frame_element(&color_variant, luminance);
                 symbols_output[xp][yp] = symbol;
                 colors_output[xp][yp] = color;
             }
@@ -123,7 +154,7 @@ fn compute_frame(a: f32, b: f32) -> Frame {
     }
 }
 
-fn compute_frame_element(luminance: f32) -> FrameElement {
+fn compute_frame_element(color_variant: &ColorVariant, luminance: f32) -> FrameElement {
     let luminance_index = (luminance * 8.0) as usize;
-    return FrameElement::new(luminance_index);
+    return FrameElement::new(&color_variant, luminance_index);
 }
